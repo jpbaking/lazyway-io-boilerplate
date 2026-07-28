@@ -4,12 +4,47 @@ Goal Ledger is a git-tracked execution record for coding agents. Its skills
 and rule install **user-global** into each harness's discovery paths; the
 record itself (`.goal-ledger/`) lives committed in each project that uses it.
 
-There are no separate model tiers. Codex, Claude Code, Google Antigravity,
-Gemini CLI, Cline, and Cursor receive the same semantic rules and skills
-(Cursor discovers the shared global skill copies natively).
+It provides crash recovery, model-tier hand-off, branch isolation, phase commits,
+a planner review gate, and optional safe squash-on-acceptance through a committed
+`.goal-ledger/`.
 
-It provides crash recovery, inter-agent handoff, branch isolation, phase commits,
-and optional safe squash-on-acceptance through a committed `.goal-ledger/`.
+The same rules and skills install into Codex, Claude Code, Google Antigravity,
+Gemini CLI, Cline, and Cursor (Cursor discovers the shared global skill copies
+natively).
+
+## The hand-off model
+
+Goal Ledger splits the work by **role**, not by harness:
+
+- A **planner** — your strongest model — inspects the project, writes the plan,
+  prepares Git, hands out phases, reviews everything at Gate D, and accepts.
+- An **executor** — a cheaper model, a subagent, or a separate CLI session —
+  runs one assigned phase from its written instructions and stops.
+
+That only works if the plan carries the reasoning the executor does not have.
+So a phase file is written *for* the weaker model: exact paths in `Scope: In`,
+an explicit `Out` list, a `Pattern to follow` pointing at real code to imitate,
+sub-tasks that are single concrete actions, a copy-pasteable `## Verify` block,
+and an `## Escalate when` list naming the ways this phase goes wrong.
+
+The executor's standing instruction is **escalate, do not improvise**: when it
+meets a decision the phase file does not answer, it records
+`needs-human — reason: <the exact question>` and stops. A stopped phase is a
+clean hand-off; a phase finished by guessing is a mess the planner has to find.
+
+Executors write to the ledger, but only in their lane — their own phase file,
+their phase's mirror line, `## Handoff`, and `## Log`. `Goal status`, the phase
+list, Git fields, and `## Review` are planner-only. `Execution mode: solo` in
+`GOAL.md` puts both roles in one session; the gates still apply.
+
+Gate D is the planner's review: run the recorded `Full verification` command,
+read `git diff <baseline>..HEAD` in full, check every changed path against some
+phase's scope, and re-check each phase's `## Evidence` against its `## Verify`.
+Executor summaries are claims until the planner re-runs the check. Findings
+become fix-up sub-tasks or a remediation phase, not caveats.
+
+Pushing, opening a PR, and merging are never automatic — Goal Ledger prepares a
+reviewed branch and stops there.
 
 DOX, compose-helper, and lazyway-io-design are not vendored or installed by this
 repository. Install those projects separately if a project needs them.
@@ -23,6 +58,7 @@ rules/
 skills/
   shared/
     goal-ledger/SKILL.md
+    goal-ledger-execute/SKILL.md
     goal-ledger-resume/SKILL.md
     goal-ledger-status/SKILL.md
     goal-ledger-abandon/SKILL.md
@@ -89,9 +125,22 @@ abandoned, or deliberately migrated first.
 
 ## Using Goal Ledger
 
-Ask your agent to use the `goal-ledger` skill for multi-phase or long-running
-work. Use `goal-ledger-resume` for recovery or handoff, `goal-ledger-status` for
-a read-only report, and `goal-ledger-abandon` to stop while preserving history.
+Ask your strongest model to use the `goal-ledger` skill for multi-phase or
+long-running work. When it reaches an executor-owned phase it hands you a
+prompt to paste into a cheaper session:
+
+```text
+Use the goal-ledger-execute skill.
+Project root: /path/to/project
+Phase: phase-0003
+Execute that phase only. Do not plan, re-scope, or continue to another phase.
+```
+
+That prompt carries no context on purpose — everything the executor needs is in
+the ledger. Use `goal-ledger-resume` for recovery or handoff,
+`goal-ledger-status` for a read-only report (it also reports whether the next
+phase is executor-ready), and `goal-ledger-abandon` to stop while preserving
+history.
 
 Goal Ledger writes `GOAL.md` and `phase-NNNN.md` files directly under
 `.goal-ledger/`. The directory is committed, never gitignored, and remains in the
@@ -112,6 +161,15 @@ The main skill includes a read-only `scripts/validate_goal_ledger.py` helper. Th
 Goal Ledger skills run it when Python 3 is available and fall back to manual
 contract checks otherwise. It validates file structure, status mirrors,
 dependencies, lifecycle invariants, Git baselines, branches, and commit trailers.
+
+It also enforces the parts of the format that make delegation work, so an
+under-specified phase fails before an executor ever sees it: every phase needs
+an `Owner`, a filled-in `Scope: In`/`Out`, a real `## Escalate when` condition,
+and a `## Verify` that is either a runnable command block or an explicit
+`- manual:` check. It warns when an executor-owned sub-task still says "as
+needed" or "if necessary", when an executor-owned phase can only be verified by
+eye, and when a phase is marked done with nothing in `## Evidence`. Reaching
+`awaiting-acceptance` requires a recorded Gate D review.
 
 ## Development
 

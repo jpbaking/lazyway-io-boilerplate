@@ -13,7 +13,15 @@ VALIDATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VALIDATOR)
 
 
-def goal_text(status="executing", repository="no", strategy="none", baseline="-", phase2_status="todo"):
+def goal_text(
+    status="executing",
+    repository="no",
+    strategy="none",
+    baseline="-",
+    phase2_status="todo",
+    mode="delegated",
+    review="none",
+):
     return f"""# GOAL — Test goal
 
 ## Goal
@@ -21,8 +29,14 @@ def goal_text(status="executing", repository="no", strategy="none", baseline="-"
 - Outcome: Produce a verified result.
 - Done when: Every fixture passes validation.
 - Goal status: {status}
-- Goal status meaning: drafting | approved | executing | blocked-on-human | awaiting-acceptance | completed | abandoned
+- Goal status meaning: drafting | approved | executing | blocked-on-human | in-review | awaiting-acceptance | completed | abandoned
 - Last completed phase: phase-0001
+
+## Execution
+- Execution mode: {mode}
+- Planner tier: strong-planner
+- Executor tier: cheap-executor
+- Full verification: python3 -m unittest discover -s tests
 
 ## Git
 - Repository: {repository}
@@ -39,29 +53,56 @@ def goal_text(status="executing", repository="no", strategy="none", baseline="-"
 
 ## Handoff
 - Current position: planning
+- Next role: planner
 - Next action: verify
 - Last verified evidence: fixture
 - Blockers: none
+
+## Review
+- Reviewed by: {review}
+- Verification result: {review}
+- Diff reviewed: {review}
+- Findings: none
 
 ## Log
 - created ledger with 2 phases
 """
 
 
-def phase_text(number, title, status, depends):
+def phase_text(number, title, status, depends, owner="executor", context=None):
     return f"""# phase-{number:04d} — {title}
 
 - Status: {status}
+- Owner: {owner}
 - Depends on: {depends}
 - Goal: Complete {title.lower()}.
 - Done when: The phase fixture passes.
+- Pattern to follow: tests/test_validator.py:1
+
+## Context
+{context or f"The fixture for {title.lower()} already exists and must not be regenerated."}
+
+## Scope
+- In: fixture.txt
+- Out: none
 
 ## Sub-tasks
 1. [done] Perform first action — done when: first evidence exists
 2. [done] Perform second action — done when: second evidence exists
 
+## Verify
+```sh
+python3 -c "print('ok')"
+```
+
+## Escalate when
+- The fixture file is missing → stop and set Status: needs-human
+
 ## Log
 - fixture created
+
+## Evidence
+- python3 -c "print('ok')" → printed ok
 """
 
 
@@ -282,6 +323,234 @@ class ValidatorTests(unittest.TestCase):
             self.assertIn(f"Commit {foreign[:12]} carries a foreign Goal-ID", warnings)
             self.assertIn(f"Commit {unclassified[:12]} is foreign to this goal", warnings)
             self.assertIn(f"Commit {unknown_phase[:12]} references unknown phase-9999", errors)
+
+    def test_owner_must_be_planner_or_executor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace("Owner: executor", "Owner: intern"),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("Owner must be planner or executor", "\n".join(result["errors"]))
+
+    def test_phase_without_runnable_or_manual_verify_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    '```sh\npython3 -c "print(\'ok\')"\n```',
+                    "Check that the result looks right.",
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("'## Verify' needs a runnable command block", "\n".join(result["errors"]))
+
+    def test_manual_only_verify_warns_for_executor_owned_phase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    '```sh\npython3 -c "print(\'ok\')"\n```',
+                    "- manual: confirm the banner renders",
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
+            self.assertIn("'## Verify' is manual only", "\n".join(result["warnings"]))
+
+    def test_scope_requires_in_and_out_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace("- Out: none\n", ""),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("'## Scope' is missing the '- Out:' line", "\n".join(result["errors"]))
+
+    def test_placeholder_scope_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    "- In: fixture.txt", "- In: <exact paths this phase may change>"
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("placeholder '- In:' line", "\n".join(result["errors"]))
+
+    def test_escalate_when_requires_a_real_condition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    "- The fixture file is missing → stop and set Status: needs-human",
+                    "- <condition> → stop and set Status: needs-human — reason: <what you need>",
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("'## Escalate when' needs at least one real stop condition", "\n".join(result["errors"]))
+
+    def test_missing_execution_section_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            goal = goal_text()
+            start = goal.index("## Execution")
+            goal = goal[:start] + goal[goal.index("## Git") :]
+            self.make_ledger(root, goal=goal)
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            joined = "\n".join(result["errors"])
+            self.assertIn("missing the '## Execution' section", joined)
+            self.assertIn("Execution mode", joined)
+
+    def test_acceptance_requires_gate_d_review(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            goal = goal_text(status="awaiting-acceptance", phase2_status="done")
+            self.make_ledger(root, goal=goal, phase1_status="done", phase2_status="done")
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn("requires Gate D review", "\n".join(result["errors"]))
+
+    def test_acceptance_passes_once_review_is_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            goal = goal_text(
+                status="awaiting-acceptance", phase2_status="done", review="strong-planner: pass"
+            )
+            self.make_ledger(root, goal=goal, phase1_status="done", phase2_status="done")
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
+
+    def test_in_review_requires_every_phase_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root, goal=goal_text(status="in-review"))
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertFalse(result["valid"])
+            self.assertIn(
+                "Goal status 'in-review' requires every phase to be done or skipped",
+                "\n".join(result["errors"]),
+            )
+
+    def test_undecided_wording_in_executor_subtask_warns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    "Perform first action", "Update the related callers as needed"
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
+            self.assertIn("leaves a decision to the executor", "\n".join(result["warnings"]))
+
+    def test_undecided_wording_is_allowed_for_planner_owned_phase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0002.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8")
+                .replace("Owner: executor", "Owner: planner")
+                .replace("Perform first action", "Update the related callers as needed"),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
+            self.assertNotIn("leaves a decision", "\n".join(result["warnings"]))
+
+    def test_done_phase_without_evidence_warns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_ledger(root)
+            phase = root / ".goal-ledger" / "phase-0001.md"
+            phase.write_text(
+                phase.read_text(encoding="utf-8").replace(
+                    '- python3 -c "print(\'ok\')" → printed ok',
+                    "- (append-only: command → observed result)",
+                ),
+                encoding="utf-8",
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
+            self.assertIn("its result is unverified", "\n".join(result["warnings"]))
+
+    def test_numbered_lines_outside_subtasks_are_not_parsed_as_subtasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = root / ".goal-ledger"
+            ledger.mkdir()
+            (ledger / "GOAL.md").write_text(goal_text(), encoding="utf-8")
+            (ledger / "phase-0001.md").write_text(
+                phase_text(
+                    1,
+                    "Prepare",
+                    "done",
+                    "none",
+                    context="Background:\n1. The fixture predates this goal.\n2. Keep its format.",
+                ),
+                encoding="utf-8",
+            )
+            (ledger / "phase-0002.md").write_text(
+                phase_text(2, "Verify", "todo", "phase-0001"), encoding="utf-8"
+            )
+
+            result = VALIDATOR.LedgerValidator(root, check_git=False).validate()
+
+            self.assertTrue(result["valid"], result)
 
     def test_missing_git_binary_has_actionable_error(self):
         with tempfile.TemporaryDirectory() as directory:

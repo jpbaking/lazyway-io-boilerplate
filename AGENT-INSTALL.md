@@ -42,8 +42,9 @@ Copy from this staging directory below; delete it when done.
 
 ## 3. Install the skills (byte-identical copies)
 
-For each skill `goal-ledger`, `goal-ledger-resume`, `goal-ledger-status`,
-`goal-ledger-abandon`, copy the full directory from `skills/shared/<skill>/`
+For each skill `goal-ledger`, `goal-ledger-execute`, `goal-ledger-resume`,
+`goal-ledger-status`, `goal-ledger-abandon`, copy the full directory from
+`skills/shared/<skill>/`
 (at minimum `SKILL.md`; `goal-ledger` also bundles
 `scripts/validate_goal_ledger.py`) to each selected harness's global skills
 directory:
@@ -85,7 +86,9 @@ The rule self-gates: its resume check and start triggers key off
    Read and follow `~/.agents/rules/goal-ledger.md`. In particular: at the
    start of every primary-session task, if the project contains
    `.goal-ledger/GOAL.md` with a `Goal status:` other than `completed` or
-   `abandoned`, use the `goal-ledger-resume` skill before unrelated work.
+   `abandoned`, use the `goal-ledger-resume` skill before unrelated work —
+   unless you were handed a specific `phase-NNNN` to run, in which case use
+   `goal-ledger-execute` for that phase only.
    <!-- /goal-ledger:global-rule -->
    ```
 
@@ -107,15 +110,17 @@ command-execution policy, not guidance.
 4. Report every file created, changed, or intentionally left alone, plus
    collisions and warnings from step 2. Note the install is per-user and
    per-machine.
-5. Tell the user: ask their agent to use the `goal-ledger` skill for
-   multi-phase work (`goal-ledger-resume` for recovery/handoff,
-   `goal-ledger-status` for a read-only report, `goal-ledger-abandon` to
-   stop while preserving history). Remind them `.goal-ledger/` directories
-   are committed project data — never gitignored.
+5. Tell the user: ask their strongest model to use the `goal-ledger` skill
+   for multi-phase work; it plans, delegates phases, and reviews at Gate D.
+   Cheaper models run individual phases via `goal-ledger-execute`
+   (`goal-ledger-resume` for recovery/handoff, `goal-ledger-status` for a
+   read-only report, `goal-ledger-abandon` to stop while preserving
+   history). Remind them `.goal-ledger/` directories are committed project
+   data — never gitignored.
 
 ## Project-level adapter install (opt-in only)
 
-Only on explicit user request: copy the four skill directories to the
+Only on explicit user request: copy the five skill directories to the
 project's `.agents/skills/` and `.claude/skills/`, and the rule to
 `.agents/rules/goal-ledger.md` and `.claude/rules/goal-ledger.md`
 (byte-identical). Claude Code needs no `CLAUDE.md` bridge — it

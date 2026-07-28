@@ -12,11 +12,15 @@ description: >-
 
 Abandonment is a durable terminal state, not deletion. Preserve the ledger and work so the decision can be understood or reversed later.
 
+Abandonment is **planner-only**. If you were handed a single phase to execute, you cannot abandon the goal: set that phase to `needs-human — reason:` and stop.
+
 ## 1. Load and summarize
 
-Read sections 1–3 of the sibling `goal-ledger` skill. If there is no ledger, say so and stop. If status is already `completed` or `abandoned`, report it and stop.
+Read sections 1–4 of the sibling `goal-ledger` skill. If there is no ledger, say so and stop. If status is already `completed` or `abandoned`, report it and stop.
 
 Show the Goal ID, Outcome, strategy and work branch, phase counts, blockers, matching goal commits, and dirty worktree state. Explain that abandonment will keep the ledger, commits, and code changes.
+
+If a phase is `ongoing`, an executor may still be holding it. Say so and confirm that work has actually stopped before abandoning.
 
 ## 2. Confirm abandonment
 
