@@ -7,7 +7,7 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VALIDATOR_PATH = ROOT / "skills" / "shared" / "goal-ledger" / "scripts" / "validate_goal_ledger.py"
+VALIDATOR_PATH = ROOT / ".agents" / "skills" / "goal-ledger" / "scripts" / "validate_goal_ledger.py"
 SPEC = importlib.util.spec_from_file_location("validate_goal_ledger", VALIDATOR_PATH)
 VALIDATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VALIDATOR)

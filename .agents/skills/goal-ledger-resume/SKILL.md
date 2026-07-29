@@ -16,7 +16,8 @@ Treat the ledger and Git as evidence left by another agent — possibly a weaker
 
 ## 1. Establish your role
 
-- If you were handed a specific phase to run, use `goal-ledger-execute` instead of this skill.
+- If you were handed a specific phase to run, use the
+  `goal-ledger-execute` skill instead.
 - If you are an ordinary helper subagent working from a delegated prompt, ignore the ledger and this skill and continue only the task you were given. An unfinished ledger is not a blocker for that task and is not worth reporting unless the prompt asks for ledger work.
 - Otherwise you are resuming as the **planner**: you own the goal, the plan, `Goal status`, Git, and Gate D.
 
@@ -29,7 +30,8 @@ Read sections 1–4 of the sibling `goal-ledger` skill. If `.goal-ledger/GOAL.md
 - Status `drafting`: return to Gate A. Status `approved`: if strategy, branch, baseline, or approval commit is missing or inconsistent, return to Gate B; otherwise return to Gate C.
 - Status `in-review`: Gate D was started and not finished. Re-run it from the top rather than trusting a partial `## Review`.
 - Status `awaiting-acceptance`: report the result and ask for acceptance; do not resume execution.
-- An unrelated request: report the unfinished goal and ask whether to resume it or use `goal-ledger-abandon`. Never overwrite it silently.
+- An unrelated request: report the unfinished goal and ask whether to resume
+  it or use the `goal-ledger-abandon` skill. Never overwrite it silently.
 
 ## 3. Reconcile Git
 

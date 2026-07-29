@@ -42,4 +42,7 @@ Warnings:
 
 When the next action is a delegation, also state which phase is ready and whether its file is executor-ready: exact paths in `Scope: In`, a runnable `## Verify`, and no sub-task that still requires a decision. Report gaps as warnings — do not fix them here.
 
-End with one recommendation: delegate the next phase, resume with `goal-ledger-resume`, run Gate D, review for acceptance, keep the completed record, or use `goal-ledger-abandon` if the user explicitly wants to stop.
+End with one recommendation: delegate the next phase, resume with the
+`goal-ledger-resume` skill, run Gate D, review for acceptance, keep the
+completed record, or use the `goal-ledger-abandon` skill if the user
+explicitly wants to stop.

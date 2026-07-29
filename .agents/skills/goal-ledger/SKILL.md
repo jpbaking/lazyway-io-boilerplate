@@ -53,14 +53,14 @@ The executor's one structural freedom: it may append **at most two** fix-up sub-
 
 **Escalate, do not improvise.** When an executor hits a decision the phase file does not answer — an ambiguity, a missing file, a failing check it cannot fix inside its scope, work that needs a file listed under `Out` — it sets its phase to `needs-human — reason: <the exact question>`, updates Handoff, commits, and stops. A stopped phase is a successful hand-off. A phase completed by guessing is a corrupted one.
 
-**Ordinary helper subagents** (search, analysis, and other non-phase delegation) are not executors. Their prompts must still say: `Ignore .goal-ledger and all Goal Ledger skills. Follow only the task in this prompt; do not create, resume, update, or abandon the ledger.` Only a session explicitly handed a phase ID via `goal-ledger-execute` is an executor.
+**Ordinary helper subagents** (search, analysis, and other non-phase delegation) are not executors. Their prompts must still say: `Ignore .goal-ledger and all Goal Ledger skills. Follow only the task in this prompt; do not create, resume, update, or abandon the ledger.` Only a session explicitly handed a phase ID through the `goal-ledger-execute` skill is an executor.
 
 ## 2. Ledger location and lifecycle
 
 - **Location:** `<project root>/.goal-ledger/`. The project root owns the task's files and has its own repository or project manifest; never place the ledger at a multi-project workspace root.
 - **Tracked state:** never add `.goal-ledger/` to `.gitignore`. Verify with `git check-ignore -v .goal-ledger/GOAL.md`. Remove an exact Goal Ledger ignore entry; if a broader user-owned pattern is responsible, explain it and obtain approval before adding a narrow negation or changing that pattern.
 - **Contents:** exactly one `GOAL.md` plus one `phase-NNNN.md` per phase. Keep phase files beside `GOAL.md`; another directory level adds no useful information.
-- **One current ledger:** never overwrite a goal whose status is not `completed` or `abandoned`. Resume it or use `goal-ledger-abandon`.
+- **One current ledger:** never overwrite a goal whose status is not `completed` or `abandoned`. Resume it or use the `goal-ledger-abandon` skill.
 - **Completed history:** keep the completed ledger in the final committed snapshot. A later goal may replace `.goal-ledger/` only after its own plan is approved; the previous ledger remains recoverable from Git history.
 - **One writer at a time:** the ledger has no locking. Exactly one session may hold a phase. Before delegating, the planner records the delegated phase in Handoff and does not touch that phase file until the executor returns. Never run two executors concurrently against one ledger.
 
@@ -242,7 +242,7 @@ Run the bundled `scripts/validate_goal_ledger.py --root <project root> --no-git`
 5. Run the phase's `## Verify`. If it fails, add a fix-up sub-task. After two failed fix-up rounds, mark the phase `needs-human`.
 6. Review the overall Goal and remaining phases. Amend only future `[todo]` phases, logging why — this is a planner-only power. Skip an entire phase only under the skip rule in section 3.
 7. Close and commit the phase under section 4. If nothing actionable remains, set Goal status `blocked-on-human` in that close commit (or create a blocked-state commit if no phase was closed), then stop.
-8. At a phase boundary, compact context if useful, then re-anchor from `GOAL.md`, the next phase file, and Git. After uncertain or interrupted state, use `goal-ledger-resume`.
+8. At a phase boundary, compact context if useful, then re-anchor from `GOAL.md`, the next phase file, and Git. After uncertain or interrupted state, use the `goal-ledger-resume` skill.
 9. Continue without asking between phases. When every phase is terminal and none needs human, set Goal status `in-review` and go to Gate D.
 
 Run the bundled validator without `--no-git` after reconciliation, before each phase close, and before acceptance. Treat errors as blockers; record warnings that affect handoff or squash safety. If Python 3 is unavailable, perform the same checks manually and say so in the report.
